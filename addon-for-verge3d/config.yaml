@@ -1,6 +1,6 @@
 name: "Verged3d Addon"
 description: "Sends Home Assistant states to verge3d api server"
-version: "0.0.16"
+version: "0.0.17"
 slug: "verged3d-addon"
 homeassistant_api: true
 supervisor_api: true
@@ -17,13 +17,11 @@ arch:
   - armhf
   - armv7
   - i386
-ports:
-  9765/tcp: 9765
-ports_description:
-  9765/tcp: WebSocket 서버 포트  
 options:
+  external_ws_server_url: "ws://20.249.196.104:8000/ws"
   polling_interval: 10 
   timeout: 30
 schema:
+  external_ws_server_url: str
   polling_interval: int(10,3600)
   timeout: int(5,300)
