@@ -1,7 +1,6 @@
 import asyncio
 import json
 import os
-from asyncio import Queue
 
 import aiohttp
 import websockets
@@ -23,32 +22,19 @@ MONITORED_DOMAINS = ["light", "media_player", "fan", "vaccum"]
 TIMEOUT = options.get("timeout", 30)
 
 
-async def process_state_changes(queue):
-    ext_ws = None
+async def process_state_change(entity_id, state):
+    """상태 변화 처리 및 외부 서버로 전송."""
     try:
-        ext_ws = await websockets.connect(EXTERNAL_WEBSOCKET_URL)
-        while True:
-            logger.debug("Waiting for item in queue...")
-            entity_id, state = await queue.get()
-            try:
-                payload = {"entity_id": entity_id, "state": state}
-                logger.info(f"Sending state change: {payload}")
-                await ext_ws.send(json.dumps(payload))
-                response = await ext_ws.recv()
-                logger.info(f"External Server Response: {response}")
-            except websockets.WebSocketException as e:
-                logger.error(f"WebSocket error: {e}")
-                # 연결 재시도
-                ext_ws = await websockets.connect(EXTERNAL_WEBSOCKET_URL)
-            except Exception as e:
-                logger.error(f"Error processing state change: {e}")
-            finally:
-                queue.task_done()
+        async with websockets.connect(EXTERNAL_WEBSOCKET_URL) as ext_ws:
+            payload = {"entity_id": entity_id, "state": state}
+            logger.info(f"Sending state change: {payload}")
+            await ext_ws.send(json.dumps(payload))
+            response = await ext_ws.recv()
+            logger.info(f"External Server Response: {response}")
+    except websockets.WebSocketException as e:
+        logger.error(f"WebSocket error: {e}")
     except Exception as e:
-        logger.error(f"Fatal error in process_state_changes: {e}")
-    finally:
-        if ext_ws and not ext_ws.closed:
-            await ext_ws.close()
+        logger.error(f"Error processing state change: {e}")
 
 
 async def get_states(session):
@@ -71,7 +57,7 @@ async def get_states(session):
     return None
 
 
-async def monitor_states(queue):
+async def monitor_states():
     while True:
         try:
             async with websockets.connect(HA_WEBSOCKET_URL) as ha_ws:
@@ -108,7 +94,7 @@ async def monitor_states(queue):
                                 ):
                                     # 상태 변경 기록
                                     logger.info(f"State change: {entity_id} -> {state}")
-                                    await queue.put((entity_id, state))
+                                    await process_state_change(entity_id, state)
 
         except websockets.WebSocketException as e:
             logger.error(f"HA WebSocket error: {e}")
@@ -119,27 +105,17 @@ async def monitor_states(queue):
 
 
 async def main():
-    state_queue = Queue()
-
-    # 상태 처리 태스크 시작
-    process_task = asyncio.create_task(process_state_changes(state_queue))
-    monitor_task = asyncio.create_task(monitor_states(state_queue))
-
+    """메인 함수."""
     try:
-        # 두 태스크가 완료될 때까지 대기
-        await asyncio.gather(process_task, monitor_task)
+        await monitor_states()
+    except asyncio.CancelledError:
+        logger.info("프로그램 종료 요청을 받았습니다.")
     except Exception as e:
-        logger.error(f"Error in main: {e}")
-    finally:
-        # 정리 작업
-        process_task.cancel()
-        monitor_task.cancel()
-        try:
-            await process_task
-            await monitor_task
-        except asyncio.CancelledError:
-            pass
+        logger.error(f"Unhandled error: {e}")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("사용자 요청으로 종료 중...")
