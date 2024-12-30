@@ -3,6 +3,7 @@ import json
 import os
 
 import websockets
+from loguru import logger
 
 # 환경 변수에서 Supervisor Token 가져오기
 SUPERVISOR_TOKEN = os.getenv("SUPERVISOR_TOKEN")
@@ -23,7 +24,7 @@ async def sync_device_states():
         # Home Assistant 인증
         await ha_ws.send(json.dumps({"type": "auth", "access_token": SUPERVISOR_TOKEN}))
         auth_response = await ha_ws.recv()
-        print("Auth Response:", auth_response)
+        logger.info(f"Auth Response:  {auth_response}")
 
         # 상태 변경 이벤트 구독
         await ha_ws.send(
@@ -35,14 +36,16 @@ async def sync_device_states():
         # 상태 변경 이벤트 처리
         while True:
             message = await ha_ws.recv()
+            logger.info(message)
             event = json.loads(message)
+
             if event.get("event", {}).get("event_type") == "state_changed":
                 entity_id = event["event"]["data"]["entity_id"]
                 new_state = event["event"]["data"]["new_state"]
 
                 # 모니터링 대상 필터링
                 if any(domain in entity_id for domain in MONITORED_DOMAINS):
-                    print(f"State Changed: {entity_id} -> {new_state}")
+                    logger.info(f"State Changed: {entity_id} -> {new_state}")
                     # 외부 웹소켓 서버로 상태 동기화
                     await send_to_external_server(entity_id, new_state)
 
@@ -52,7 +55,7 @@ async def send_to_external_server(entity_id, state):
         payload = {"entity_id": entity_id, "state": state}
         await ext_ws.send(json.dumps(payload))
         response = await ext_ws.recv()
-        print(f"External Server Response: {response}")
+        logger.info(f"External Server Response: {response}")
 
 
 # 비동기 함수 실행
