@@ -22,13 +22,12 @@ MONITORED_DOMAINS = ["light", "media_player", "fan", "vaccum"]
 TIMEOUT = options.get("timeout", 30)
 
 
-async def process_state_change(entity_id, state):
+async def process_state_change(data):
     """상태 변화 처리 및 외부 서버로 전송."""
     try:
         async with websockets.connect(EXTERNAL_WEBSOCKET_URL) as ext_ws:
-            payload = {"entity_id": entity_id, "state": state}
-            logger.info(f"Sending state change: {payload}")
-            await ext_ws.send(json.dumps(payload))
+            logger.info(f"Sending state change: {data}")
+            await ext_ws.send(json.dumps(data))
             response = await ext_ws.recv()
             logger.info(f"External Server Response: {response}")
     except websockets.WebSocketException as e:
@@ -85,6 +84,7 @@ async def monitor_states():
                     async with aiohttp.ClientSession() as session:
                         states = await get_states(session)
                         if states:
+                            device_states = []
                             for state in states:
                                 entity_id = state["entity_id"]
                                 state = state["state"]
@@ -94,7 +94,11 @@ async def monitor_states():
                                 ):
                                     # 상태 변경 기록
                                     logger.info(f"State change: {entity_id} -> {state}")
-                                    await process_state_change(entity_id, state)
+                                    device_states.append(
+                                        {"entity_id": entity_id, "state": state}
+                                    )
+                            if device_states:
+                                await process_state_change(device_states)
 
         except websockets.WebSocketException as e:
             logger.error(f"HA WebSocket error: {e}")
