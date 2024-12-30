@@ -18,7 +18,7 @@ with open("/data/options.json", encoding="utf8") as f:
 EXTERNAL_WEBSOCKET_URL = options.get("external_ws_server_url")
 
 # 모니터링할 엔티티 도메인
-MONITORED_DOMAINS = ["light", "switch", "media_player", "fan", "vaccum"]
+MONITORED_DOMAINS = ["light", "media_player", "fan", "vaccum"]
 # 타임아웃 설정 (초)
 TIMEOUT = options.get("timeout", 30)
 
@@ -28,9 +28,11 @@ async def process_state_changes(queue):
     try:
         ext_ws = await websockets.connect(EXTERNAL_WEBSOCKET_URL)
         while True:
+            logger.debug("Waiting for item in queue...")
             entity_id, state = await queue.get()
             try:
                 payload = {"entity_id": entity_id, "state": state}
+                logger.info(f"Sending state change: {payload}")
                 await ext_ws.send(json.dumps(payload))
                 response = await ext_ws.recv()
                 logger.info(f"External Server Response: {response}")
