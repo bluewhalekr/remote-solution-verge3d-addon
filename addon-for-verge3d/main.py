@@ -7,7 +7,12 @@ import websockets
 # 환경 변수에서 Supervisor Token 가져오기
 SUPERVISOR_TOKEN = os.getenv("SUPERVISOR_TOKEN")
 HA_WEBSOCKET_URL = "ws://supervisor/core/websocket"
-EXTERNAL_WEBSOCKET_URL = "ws://your-external-websocket-server"  # 외부 서버 URL
+
+with open("/data/options.json", encoding="utf8") as f:
+    options = json.load(f)
+
+EXTERNAL_WEBSOCKET_URL = options.get("external_ws_server_url")
+
 
 # 모니터링할 엔티티 도메인
 MONITORED_DOMAINS = ["light", "switch", "media_player"]
