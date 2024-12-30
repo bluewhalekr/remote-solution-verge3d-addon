@@ -5,9 +5,11 @@ from asyncio import Queue
 from collections import defaultdict
 from datetime import datetime, timedelta
 
+import aiohttp
 import websockets
 from loguru import logger
 
+HA_URL = "http://supervisor/core"
 # 환경 변수에서 Supervisor Token 가져오기
 SUPERVISOR_TOKEN = os.getenv("SUPERVISOR_TOKEN")
 HA_WEBSOCKET_URL = "ws://supervisor/core/websocket"
@@ -19,6 +21,8 @@ EXTERNAL_WEBSOCKET_URL = options.get("external_ws_server_url")
 
 # 모니터링할 엔티티 도메인
 MONITORED_DOMAINS = ["light", "switch", "media_player", "fan", "vaccum"]
+# 타임아웃 설정 (초)
+TIMEOUT = options.get("timeout", 30)
 
 
 async def process_state_changes(queue):
@@ -45,6 +49,26 @@ async def process_state_changes(queue):
     finally:
         if ext_ws and not ext_ws.closed:
             await ext_ws.close()
+
+
+async def get_states(session):
+    url = f"{HA_URL}/api/states"
+    headers = {
+        "Authorization": f"Bearer {SUPERVISOR_TOKEN}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        async with session.get(url, headers=headers, timeout=TIMEOUT) as response:
+            if response.status == 200:
+                states = await response.json()
+                logger.info(f"Successfully fetched {len(states)} states")
+                return states
+            logger.error(f"Failed to get states. Status: {response.status}")
+    except Exception as e:
+        logger.exception(f"Error fetching states: {str(e)}")
+
+    return None
 
 
 async def monitor_states(queue):
@@ -80,6 +104,11 @@ async def monitor_states(queue):
                     event = json.loads(message)
                     current_time = datetime.now()
                     logger.info(event)
+                    async with aiohttp.ClientSession() as session:
+                        states = await get_states(session)
+                        if states:
+                            logger.info(f"States: {states}")
+
                     if event.get("event", {}).get("event_type") == "state_changed":
                         entity_id = event["event"]["data"]["entity_id"]
                         new_state = event["event"]["data"]["new_state"]
