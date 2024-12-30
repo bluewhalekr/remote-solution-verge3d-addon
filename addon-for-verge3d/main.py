@@ -36,7 +36,6 @@ async def sync_device_states():
         # 상태 변경 이벤트 처리
         while True:
             message = await ha_ws.recv()
-            logger.info(message)
             event = json.loads(message)
 
             if event.get("event", {}).get("event_type") == "state_changed":
@@ -45,6 +44,7 @@ async def sync_device_states():
 
                 # 모니터링 대상 필터링
                 if any(domain in entity_id for domain in MONITORED_DOMAINS):
+                    logger.info("=====================================")
                     logger.info(f"State Changed: {entity_id} -> {new_state}")
                     # 외부 웹소켓 서버로 상태 동기화
                     await send_to_external_server(entity_id, new_state)
