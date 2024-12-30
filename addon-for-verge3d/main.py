@@ -37,6 +37,7 @@ async def process_state_change(data):
 
 
 async def get_states(session):
+    """Home Assistant 상태 가져오기."""
     url = f"{HA_URL}/api/states"
     headers = {
         "Authorization": f"Bearer {SUPERVISOR_TOKEN}",
@@ -62,57 +63,66 @@ async def is_monitored_state(entity_id: str, state: str) -> bool:
     )
 
 
+async def authenticate_websocket(websocket):
+    """WebSocket 인증 처리"""
+    auth_message = {"type": "auth", "access_token": SUPERVISOR_TOKEN}
+    await websocket.send(json.dumps(auth_message))
+    auth_response = await websocket.recv()
+    logger.info(f"Auth Response: {auth_response}")
+
+
+async def subscribe_to_states(websocket):
+    """상태 변경 구독"""
+    subscribe_message = {
+        "id": 1,
+        "type": "subscribe_events",
+        "event_type": "state_changed",
+    }
+    await websocket.send(json.dumps(subscribe_message))
+    logger.info("Subscribed to state changes")
+
+
+async def collect_device_states(states: list) -> list:
+    """모니터링 대상 디바이스의 상태 수집"""
+    device_states = []
+
+    for state in states:
+        entity_id = state["entity_id"]
+        current_state = state["state"]
+
+        if await is_monitored_state(entity_id, current_state):
+            logger.info(f"State change: {entity_id} -> {current_state}")
+            device_states.append({"entity_id": entity_id, "state": current_state})
+
+    return device_states
+
+
+async def handle_state_updates(ha_ws):
+    """상태 업데이트 처리"""
+    while True:
+        await ha_ws.recv()
+        async with aiohttp.ClientSession() as session:
+            states = await get_states(session)
+            if not states:
+                continue
+
+            device_states = await collect_device_states(states)
+            if device_states:
+                await process_state_change(device_states)
+
+
 async def monitor_states():
     """Home Assistant 상태 변경 모니터링."""
     while True:
         try:
             async with websockets.connect(HA_WEBSOCKET_URL) as ha_ws:
-                # Home Assistant 인증
-                await ha_ws.send(
-                    json.dumps({"type": "auth", "access_token": SUPERVISOR_TOKEN})
-                )
-                auth_response = await ha_ws.recv()
-                logger.info(f"Auth Response: {auth_response}")
+                await authenticate_websocket(ha_ws)
+                await subscribe_to_states(ha_ws)
+                await handle_state_updates(ha_ws)
 
-                # 상태 변경 이벤트 구독
-                await ha_ws.send(
-                    json.dumps(
-                        {
-                            "id": 1,
-                            "type": "subscribe_events",
-                            "event_type": "state_changed",
-                        }
-                    )
-                )
-
-                # 상태 변경 이벤트 처리
-                while True:
-                    await ha_ws.recv()
-                    async with aiohttp.ClientSession() as session:
-                        states = await get_states(session)
-                        if states:
-                            device_states = []
-                            for state in states:
-                                entity_id = state["entity_id"]
-                                state = state["state"]
-                                if state in ["on", "off"] and any(
-                                    entity_id.startswith(f"{domain}.")
-                                    for domain in MONITORED_DOMAINS
-                                ):
-                                    # 상태 변경 기록
-                                    logger.info(f"State change: {entity_id} -> {state}")
-                                    device_states.append(
-                                        {"entity_id": entity_id, "state": state}
-                                    )
-                            if device_states:
-                                await process_state_change(device_states)
-
-        except websockets.WebSocketException as e:
-            logger.error(f"HA WebSocket error: {e}")
-            await asyncio.sleep(5)  # 재연결 전 대기
         except Exception as e:
-            logger.error(f"Error in monitor_states: {e}")
-            await asyncio.sleep(5)  # 재연결 전 대기
+            logger.error(f"WebSocket connection error: {e}")
+            await asyncio.sleep(5)  # # 재연결 전 대기
 
 
 async def main():
@@ -120,13 +130,10 @@ async def main():
     try:
         await monitor_states()
     except asyncio.CancelledError:
-        logger.info("프로그램 종료 요청을 받았습니다.")
+        logger.info("Monitoring stopped by user")
     except Exception as e:
         logger.error(f"Unhandled error: {e}")
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("사용자 요청으로 종료 중...")
+    asyncio.run(main())
