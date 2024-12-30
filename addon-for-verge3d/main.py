@@ -107,7 +107,7 @@ async def monitor_states(queue):
                             for state in states:
                                 entity_id = state["entity_id"]
                                 state = state["state"]
-                                if any(
+                                if state in ["on", "off"] and any(
                                     domain in entity_id for domain in MONITORED_DOMAINS
                                 ):
                                     # 상태 변경 기록
