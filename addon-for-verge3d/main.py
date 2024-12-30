@@ -79,7 +79,7 @@ async def monitor_states(queue):
                     message = await ha_ws.recv()
                     event = json.loads(message)
                     current_time = datetime.now()
-
+                    logger.info(event)
                     if event.get("event", {}).get("event_type") == "state_changed":
                         entity_id = event["event"]["data"]["entity_id"]
                         new_state = event["event"]["data"]["new_state"]
