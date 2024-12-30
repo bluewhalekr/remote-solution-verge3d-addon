@@ -74,11 +74,13 @@ async def monitor_states(queue):
                     if event.get("event", {}).get("event_type") == "state_changed":
                         entity_id = event["event"]["data"]["entity_id"]
                         new_state = event["event"]["data"]["new_state"]
-
-                        if any(domain in entity_id for domain in MONITORED_DOMAINS):
-                            logger.info("=====================================")
-                            logger.info(f"State Changed: {entity_id} -> {new_state}")
-                            await queue.put((entity_id, new_state))
+                        if new_state in ["on", "off"]:
+                            if any(domain in entity_id for domain in MONITORED_DOMAINS):
+                                logger.info("=====================================")
+                                logger.info(
+                                    f"State Changed: {entity_id} -> {new_state}"
+                                )
+                                await queue.put((entity_id, new_state))
 
         except websockets.WebSocketException as e:
             logger.error(f"HA WebSocket error: {e}")
