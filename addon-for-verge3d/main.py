@@ -3,7 +3,7 @@ import json
 import os
 from asyncio import Queue
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import aiohttp
 import websockets
@@ -100,51 +100,19 @@ async def monitor_states(queue):
 
                 # 상태 변경 이벤트 처리
                 while True:
-                    message = await ha_ws.recv()
-                    event = json.loads(message)
-                    current_time = datetime.now()
-                    logger.info(event)
+                    await ha_ws.recv()
                     async with aiohttp.ClientSession() as session:
                         states = await get_states(session)
                         if states:
-                            logger.info(f"States: {states}")
-
-                    if event.get("event", {}).get("event_type") == "state_changed":
-                        entity_id = event["event"]["data"]["entity_id"]
-                        new_state = event["event"]["data"]["new_state"]
-
-                        if "state" in new_state and new_state["state"] in ["on", "off"]:
-                            if any(domain in entity_id for domain in MONITORED_DOMAINS):
-                                # 상태 변경 기록
-                                state_changes[current_time].append(
-                                    (entity_id, new_state)
-                                )
-                                logger.debug(
-                                    f"Added to batch: {entity_id} -> {new_state}"
-                                )
-
-                                # 배치 처리 시점 확인
-                                if (
-                                    last_batch_time is None
-                                    or current_time - last_batch_time > BATCH_WINDOW
+                            for state in states:
+                                entity_id = state["entity_id"]
+                                state = state["state"]
+                                if any(
+                                    domain in entity_id for domain in MONITORED_DOMAINS
                                 ):
-                                    if state_changes:
-                                        logger.info(
-                                            "====================================="
-                                        )
-                                        logger.info(
-                                            f"Processing batch of {len(state_changes)} state changes:"
-                                        )
-
-                                        # 누적된 모든 변경사항 처리
-                                        for timestamp, changes in state_changes.items():
-                                            for entity_id, state in changes:
-                                                logger.info(f"- {entity_id} -> {state}")
-                                                await queue.put((entity_id, state))
-
-                                        # 처리 완료된 변경사항 초기화
-                                        state_changes.clear()
-                                        last_batch_time = current_time
+                                    # 상태 변경 기록
+                                    logger.info(f"State change: {entity_id} -> {state}")
+                                    await queue.put((entity_id, state))
 
         except websockets.WebSocketException as e:
             logger.error(f"HA WebSocket error: {e}")
