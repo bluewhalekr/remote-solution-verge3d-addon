@@ -1,6 +1,6 @@
 name: "Verged3d Addon"
 description: "Sends Home Assistant states to verge3d api server"
-version: "0.0.7"
+version: "0.0.8"
 slug: "verged3d-addon"
 homeassistant_api: true
 supervisor_api: true
