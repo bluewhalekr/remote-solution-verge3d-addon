@@ -2,8 +2,6 @@ import asyncio
 import json
 import os
 from asyncio import Queue
-from collections import defaultdict
-from datetime import timedelta
 
 import aiohttp
 import websockets
@@ -72,11 +70,6 @@ async def get_states(session):
 
 
 async def monitor_states(queue):
-    # 상태 변경 추적을 위한 변수들
-    state_changes = defaultdict(list)
-    BATCH_WINDOW = timedelta(seconds=0.5)  # 500ms 내의 변경을 하나의 배치로 처리
-    last_batch_time = None
-
     while True:
         try:
             async with websockets.connect(HA_WEBSOCKET_URL) as ha_ws:
@@ -108,7 +101,8 @@ async def monitor_states(queue):
                                 entity_id = state["entity_id"]
                                 state = state["state"]
                                 if state in ["on", "off"] and any(
-                                    domain in entity_id for domain in MONITORED_DOMAINS
+                                    entity_id.startswith(f"{domain}.")
+                                    for domain in MONITORED_DOMAINS
                                 ):
                                     # 상태 변경 기록
                                     logger.info(f"State change: {entity_id} -> {state}")
