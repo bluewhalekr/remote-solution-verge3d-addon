@@ -14,7 +14,6 @@ with open("/data/options.json", encoding="utf8") as f:
 
 EXTERNAL_WEBSOCKET_URL = options.get("external_ws_server_url")
 
-
 # 모니터링할 엔티티 도메인
 MONITORED_DOMAINS = ["light", "switch", "media_player"]
 
